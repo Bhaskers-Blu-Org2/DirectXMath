@@ -2501,13 +2501,13 @@ inline void XM_CALLCONV XMStoreFloat3PK
         uint32_t Sign = IValue[j] & 0x80000000;
         uint32_t I = IValue[j] & 0x7FFFFFFF;
 
-        if ((I & 0x7F800000) == 0x7F800000)
+        if (I >= 0x47800000 /*e+16*/)
         {
             // INF or NAN
-            Result[j] = 0x7c0;
+            Result[j] = 0x7C0U;
             if ((I & 0x7FFFFF) != 0)
             {
-                Result[j] = 0x7c0 | (((I >> 17) | (I >> 11) | (I >> 6) | (I)) & 0x3f);
+                Result[j] = 0x7C0U | ((I > 0x7F800000) ? (0x20 | ((I >> 17U) & 0x3FU)) : 0U);
             }
             else if (Sign)
             {
@@ -2515,32 +2515,30 @@ inline void XM_CALLCONV XMStoreFloat3PK
                 Result[j] = 0;
             }
         }
-        else if (Sign)
+        else if (Sign || I <= 0x33000000U /*e-25*/ )
         {
-            // 3PK is positive only, so clamp to zero
             Result[j] = 0;
         }
-        else if (I > 0x477E0000U)
+        else if (I > 0x477E0000U /* 65024 */)
         {
             // The number is too large to be represented as a float11, set to max
             Result[j] = 0x7BF;
         }
+        else if (I < 0x38800000U /*e-14*/)
+        {
+            // The number is too small to be represented as a normalized half.
+            // Convert it to a denormalized value.
+            uint32_t Shift = 129U - (I >> 23U);
+            I = 0x800000U | (I & 0x7FFFFFU);
+            Result[j] = I >> (Shift + 1);
+            uint32_t s = (I & ((1U << Shift) - 1)) != 0;
+            Result[j] += (Result[j] | s) & ((I >> Shift) & 1U);
+        }
         else
         {
-            if (I < 0x38800000U)
-            {
-                // The number is too small to be represented as a normalized float11
-                // Convert it to a denormalized value.
-                uint32_t Shift = 113U - (I >> 23U);
-                I = (0x800000U | (I & 0x7FFFFFU)) >> Shift;
-            }
-            else
-            {
-                // Rebias the exponent to represent the value as a normalized float11
-                I += 0xC8000000U;
-            }
-
-            Result[j] = ((I + 0xFFFFU + ((I >> 17U) & 1U)) >> 17U) & 0x7ffU;
+            // Rebias the exponent to represent the value as a normalized float11
+            I += 0xC8000000U;
+            Result[j] = ((I + 0xFFFFU + ((I >> 17U) & 1U)) >> 17U) & 0x7FFU;
         }
     }
 
@@ -2548,13 +2546,13 @@ inline void XM_CALLCONV XMStoreFloat3PK
     uint32_t Sign = IValue[2] & 0x80000000;
     uint32_t I = IValue[2] & 0x7FFFFFFF;
 
-    if ((I & 0x7F800000) == 0x7F800000)
+    if (I >= 0x47800000 /*e+16*/)
     {
         // INF or NAN
-        Result[2] = 0x3e0;
+        Result[2] = 0x3E0U;
         if (I & 0x7FFFFF)
         {
-            Result[2] = 0x3e0 | (((I >> 18) | (I >> 13) | (I >> 3) | (I)) & 0x1f);
+            Result[2] = 0x3E0U | ((I > 0x7F800000) ? (0x10 | ((I >> 18U) & 0x1FU)) : 0U);
         }
         else if (Sign)
         {
@@ -2562,32 +2560,30 @@ inline void XM_CALLCONV XMStoreFloat3PK
             Result[2] = 0;
         }
     }
-    else if (Sign)
+    else if (Sign || I <= 0x33000000U /*e-25*/)
     {
-        // 3PK is positive only, so clamp to zero
         Result[2] = 0;
     }
-    else if (I > 0x477C0000U)
+    else if (I > 0x477C0000U /* 64512 */)
     {
         // The number is too large to be represented as a float10, set to max
         Result[2] = 0x3df;
     }
+    else if (I < 0x38800000U /*e-14*/)
+    {
+        // The number is too small to be represented as a normalized half.
+        // Convert it to a denormalized value.
+        uint32_t Shift = 130U - (I >> 23U);
+        I = 0x800000U | (I & 0x7FFFFFU);
+        Result[2] = I >> (Shift + 1);
+        uint32_t s = (I & ((1U << Shift) - 1)) != 0;
+        Result[2] += (Result[2] | s) & ((I >> Shift) & 1U);
+    }
     else
     {
-        if (I < 0x38800000U)
-        {
-            // The number is too small to be represented as a normalized float10
-            // Convert it to a denormalized value.
-            uint32_t Shift = 113U - (I >> 23U);
-            I = (0x800000U | (I & 0x7FFFFFU)) >> Shift;
-        }
-        else
-        {
-            // Rebias the exponent to represent the value as a normalized float10
-            I += 0xC8000000U;
-        }
-
-        Result[2] = ((I + 0x1FFFFU + ((I >> 18U) & 1U)) >> 18U) & 0x3ffU;
+        // Rebias the exponent to represent the value as a normalized float10
+        I += 0xC8000000U;
+        Result[2] = ((I + 0x1FFFFU + ((I >> 18U) & 1U)) >> 18U) & 0x3FFU;
     }
 
     // Pack Result into memory
